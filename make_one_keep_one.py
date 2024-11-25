@@ -1,4 +1,5 @@
-from login_gui_v2 import LoginForm
+from login_gui_v2 import login_handler
+from mk_one_ui import main_ui
 from auto_save_dict import AutoSaveDict
 
 import sys
@@ -48,50 +49,26 @@ class Communicate(QObject):
     item_update_signal = Signal(str, str, str)
     handle_message_data_signal = Signal(dict)
     handle_filled_data_signal = Signal(object)
+    table_init_signal = Signal()
 
 class MainApp(QWidget):
-    def __init__(self, sdk, active_account, icon_path):
+    def __init__(self, login_handler):
         super().__init__()
 
-        my_icon = QIcon()
-        my_icon.addFile(icon_path)
-        self.setWindowIcon(my_icon)
-        self.setWindowTitle("Python條件單庫存移動停損利(教學範例，僅限現股)")
+        self.login_handler = login_handler
+        self.sdk = self.login_handler.sdk
+        self.active_account = self.login_handler.active_account
+
+        self.mk_one_ui = main_ui()
+
+        self.setWindowIcon(self.login_handler.windowIcon())
+        self.setWindowTitle(self.mk_one_ui.windowTitle())
         self.resize(1200, 600)
-        self.active_account = active_account
-        
-        self.sdk = sdk
+
+        # 將 main_ui 的佈局設定到 MainWindow
+        self.setLayout(self.mk_one_ui.layout())
+        self.table_header = self.mk_one_ui.table_header
         self.mutex = QMutex()
-        
-        # 製作上下排列layout上為庫存表，下為log資訊
-        layout = QVBoxLayout()
-        # 庫存表表頭
-        self.table_header = ['股票名稱', '股票代號', '類別', '庫存股數', '庫存均價', '現價', '損益試算', '獲利率%', '移停(%)', '當前基準價', '觸發價', '設定股數']
-
-        self.tablewidget = QTableWidget(0, len(self.table_header))
-        self.tablewidget.setHorizontalHeaderLabels([f'{item}' for item in self.table_header])
-
-        # 模擬區layout設定
-        self.button_fake_buy_filled = QPushButton('fake buy filled')
-        self.button_fake_sell_filled = QPushButton('fake sell filled')
-        self.button_fake_websocket = QPushButton('fake websocket')
-
-        layout_sim = QGridLayout()
-        label_sim = QLabel('測試用按鈕')
-        label_sim.setStyleSheet("QLabel { font-size: 24px; font-weight: bold; }")
-        label_sim.setAlignment(Qt.AlignCenter)
-        layout_sim.addWidget(label_sim, 0, 1)
-        layout_sim.addWidget(self.button_fake_buy_filled, 1, 0)
-        layout_sim.addWidget(self.button_fake_sell_filled, 1, 1)
-        layout_sim.addWidget(self.button_fake_websocket, 1, 2)
-        
-        self.log_text = QPlainTextEdit()
-        self.log_text.setReadOnly(True)
-
-        layout.addWidget(self.tablewidget, stretch=7)
-        layout.addLayout(layout_sim, stretch=1)
-        layout.addWidget(self.log_text, stretch=3)
-        self.setLayout(layout)
 
         self.print_log("login success, 現在使用帳號: {}".format(self.active_account.account))
         self.print_log("建立行情連線...")
@@ -101,10 +78,10 @@ class MainApp(QWidget):
         self.wsstock = self.sdk.marketdata.websocket_client.stock
 
         # slot function connect
-        self.tablewidget.itemClicked[QTableWidgetItem].connect(self.onItemClicked)
-        self.button_fake_websocket.clicked.connect(self.fake_ws_data)
-        self.button_fake_buy_filled.clicked.connect(self.fake_buy_filled)
-        self.button_fake_sell_filled.clicked.connect(self.fake_sell_filled)
+        self.mk_one_ui.tablewidget.itemClicked[QTableWidgetItem].connect(self.onItemClicked)
+        self.mk_one_ui.button_fake_websocket.clicked.connect(self.fake_ws_data)
+        self.mk_one_ui.button_fake_buy_filled.clicked.connect(self.fake_buy_filled)
+        self.mk_one_ui.button_fake_sell_filled.clicked.connect(self.fake_sell_filled)
 
         # communicator init and slot function connect
         self.communicator = Communicate()
@@ -112,6 +89,7 @@ class MainApp(QWidget):
         self.communicator.item_update_signal.connect(self.item_update)
         self.communicator.handle_message_data_signal.connect(self.message_update)
         self.communicator.handle_filled_data_signal.connect(self.handle_on_filled_data)
+        self.communicator.table_init_signal.connect(self.table_init)
         
         # 初始化相關變數
         self.inventories = {}
@@ -141,12 +119,12 @@ class MainApp(QWidget):
         self.wsstock.connect()
 
         self.print_log("抓取庫存...")
-        self.table_init()
+        self.communicator.table_init_signal.emit()
 
     
     # 當有庫存歸零時刪除該列的slot function
     def del_table_row(self, row_idx):
-        self.tablewidget.removeRow(row_idx)
+        self.mk_one_ui.tablewidget.removeRow(row_idx)
         
         for key, value in self.row_idx_map.items():
             if value > row_idx:
@@ -158,50 +136,50 @@ class MainApp(QWidget):
 
     # 當有成交有不在現有庫存的現股股票時新增至現有表格最下方
     def add_new_inv(self, symbol, qty, price):
-        row = self.tablewidget.rowCount()
-        self.tablewidget.insertRow(row)
+        row = self.mk_one_ui.tablewidget.rowCount()
+        self.mk_one_ui.tablewidget.insertRow(row)
         
         for j in range(len(self.table_header)):
             item = QTableWidgetItem()
             if self.table_header[j] == '股票名稱':
                 item.setText(self.tickers_name[symbol])
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '股票代號':
                 item.setText(symbol)
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '類別':
                 item.setText("Stock")
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '庫存股數':
                 item.setText(str(qty))
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '庫存均價':
                 item.setText(str(round(price+self.epsilon, 2)))
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '現價':
                 item.setText(str(round(price+self.epsilon, 2)))
-                self.tablewidget.setItem(row, j, item)                   
+                self.mk_one_ui.tablewidget.setItem(row, j, item)                   
             elif self.table_header[j] == '損益試算':
                 cur_upnl = 0
                 item.setText(str(cur_upnl))
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '獲利率%':
                 return_rate = 0
                 item.setText(str(round(return_rate+self.epsilon, 2))+'%')
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '移停(%)':
                 item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                 item.setCheckState(Qt.Unchecked)
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '當前基準價':
                 item.setText('-')
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '觸發價':
                 item.setText('-')
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
             elif self.table_header[j] == '設定股數':
                 item.setText('-')
-                self.tablewidget.setItem(row, j, item)
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
 
         self.row_idx_map[symbol] = row
         self.wsstock.subscribe({
@@ -242,11 +220,11 @@ class MainApp(QWidget):
                 if (symbol, str(filled_data.order_type)) in self.inventories:
                     print("already in inventories", self.row_idx_map)
                     
-                    inv_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數'])
+                    inv_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數'])
                     inv_qty = int(inv_item.text())
                     new_inv_qty = inv_qty + filled_data.filled_qty
                     
-                    avg_price_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
+                    avg_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
                     avg_price = float(avg_price_item.text())
                     new_avg_price = ((inv_qty*avg_price) + (filled_data.filled_qty*filled_data.filled_price))/new_inv_qty
                     new_pnl = (filled_data.filled_price-new_avg_price)*new_inv_qty
@@ -254,11 +232,11 @@ class MainApp(QWidget):
                     new_rate_return = new_pnl/new_cost*100
 
                     # update row
-                    self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數']).setText(str(new_inv_qty))
-                    self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價']).setText(str(round(new_avg_price+self.epsilon, 2)))
-                    self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['現價']).setText(str(round(filled_data.filled_price+self.epsilon, 2)))
-                    self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['損益試算']).setText(str(round(new_pnl+self.epsilon, 2)))
-                    self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(new_rate_return+self.epsilon, 2))+"%")
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數']).setText(str(new_inv_qty))
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價']).setText(str(round(new_avg_price+self.epsilon, 2)))
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['現價']).setText(str(round(filled_data.filled_price+self.epsilon, 2)))
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['損益試算']).setText(str(round(new_pnl+self.epsilon, 2)))
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(new_rate_return+self.epsilon, 2))+"%")
                     self.print_log(f"{symbol}...買入 {filled_data.filled_qty} 股成交，成交價: {filled_data.filled_price}，新庫存股數: {new_inv_qty}，新庫存均價: {round(new_avg_price+self.epsilon, 2)}")
 
                 else:
@@ -271,22 +249,22 @@ class MainApp(QWidget):
                 print("sell:", symbol)
                 # print(self.inventories)
                 if (symbol, str(filled_data.order_type)) in self.inventories:
-                    inv_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數'])
+                    inv_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數'])
                     inv_qty = int(inv_item.text())
                     remain_qty = inv_qty-filled_data.filled_qty
                     if remain_qty > 0:
                         remain_qty_str = str(int(round(remain_qty, 0)))
-                        avg_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
+                        avg_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
                         avg_price = float(avg_item.text())
                         new_pnl = (filled_data.filled_price-avg_price)*remain_qty
                         new_cost = avg_price*remain_qty
                         new_rate_return = new_pnl/new_cost*100
 
                         # update row
-                        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數']).setText(remain_qty_str)
-                        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['現價']).setText(str(round(filled_data.filled_price+self.epsilon, 2)))
-                        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['損益試算']).setText(str(round(new_pnl+self.epsilon, 2)))
-                        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(new_rate_return+self.epsilon, 2))+"%")
+                        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數']).setText(remain_qty_str)
+                        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['現價']).setText(str(round(filled_data.filled_price+self.epsilon, 2)))
+                        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['損益試算']).setText(str(round(new_pnl+self.epsilon, 2)))
+                        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(new_rate_return+self.epsilon, 2))+"%")
                         self.print_log(f"{symbol}...賣出 {filled_data.filled_qty} 股成交，成交價: {filled_data.filled_price}，新庫存股數: {remain_qty_str}")
 
                     elif remain_qty == 0:
@@ -347,7 +325,7 @@ class MainApp(QWidget):
     # 更新表格內某一格值的slot function
     def item_update(self, symbol, col_name, value):
         try:
-            self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map[col_name]).setText(value)
+            self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map[col_name]).setText(value)
         except Exception as e:
             print(e, symbol, col_name, value)
 
@@ -383,13 +361,13 @@ class MainApp(QWidget):
 
     def onItemClicked(self, item):
         if item.checkState() == Qt.Checked:
-            symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
+            symbol = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
             item_str = item.text() #停損或停利的輸入
 
-            cur_price = self.tablewidget.item(item.row(), self.col_idx_map['現價']).text()
+            cur_price = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['現價']).text()
             cur_price = float(cur_price)
 
-            order_qty = self.tablewidget.item(item.row(), self.col_idx_map['庫存股數']).text()
+            order_qty = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['庫存股數']).text()
 
             if item.column() == self.col_idx_map['移停(%)']:
                 if symbol in self.trail_stop:
@@ -415,10 +393,10 @@ class MainApp(QWidget):
                         self.trail_guid_map[symbol] = trail_res.data.guid
                         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                         self.print_log(f"{symbol}...移動停損利設定成功: {item_str}%, 單號: {trail_res.data.guid}")
-                        self.tablewidget.item(item.row(), self.col_idx_map['當前基準價']).setText(str(cur_price))
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['當前基準價']).setText(str(cur_price))
                         stop_price = round(cur_price*(100-item_trail_percent)/100, 2)
-                        self.tablewidget.item(item.row(), self.col_idx_map['觸發價']).setText(str(stop_price))
-                        self.tablewidget.item(item.row(), self.col_idx_map['設定股數']).setText(str(order_qty))
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['觸發價']).setText(str(stop_price))
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['設定股數']).setText(str(order_qty))
 
                     else:
                         self.print_log(symbol+"...移動停損利設定失敗: "+trail_res.message)
@@ -429,16 +407,16 @@ class MainApp(QWidget):
         elif item.checkState() == Qt.Unchecked:
             if item.column() == self.col_idx_map['移停(%)']:
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
-                symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
+                symbol = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
                 if symbol in self.trail_stop:
                     cancel_res = self.sdk.stock.cancel_condition_orders(self.active_account, self.trail_guid_map[symbol])
                     if cancel_res.is_success:
                         self.trail_stop.pop(symbol)
                         self.trail_guid_map.pop(symbol)
                         self.print_log(symbol+"...移停已移除，請重新設置")
-                        self.tablewidget.item(item.row(), self.col_idx_map['當前基準價']).setText('-')
-                        self.tablewidget.item(item.row(), self.col_idx_map['觸發價']).setText('-')
-                        self.tablewidget.item(item.row(), self.col_idx_map['設定股數']).setText('-')
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['當前基準價']).setText('-')
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['觸發價']).setText('-')
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['設定股數']).setText('-')
                         print("Trail Stop list:", self.trail_stop)
 
     def message_update(self, data_dict):
@@ -452,32 +430,32 @@ class MainApp(QWidget):
         else:
             return
                     
-        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['現價']).setText(str(cur_price))
+        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['現價']).setText(str(cur_price))
     
-        avg_price_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
+        avg_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
         avg_price = avg_price_item.text()
     
-        share_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數'])
+        share_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存股數'])
         share = share_item.text()
     
         cur_pnl = (cur_price-float(avg_price))*float(share)
-        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['損益試算']).setText(str(int(round(cur_pnl, 0))))
+        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['損益試算']).setText(str(int(round(cur_pnl, 0))))
     
         return_rate = cur_pnl/(float(avg_price)*float(share))*100
-        self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(return_rate+self.epsilon, 2))+'%')
+        self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(return_rate+self.epsilon, 2))+'%')
         
-        cur_base_price_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['當前基準價'])
+        cur_base_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['當前基準價'])
         if cur_base_price_item.text() == '-':
             return
         else:
             cur_base_price = float(cur_base_price_item.text())
             
             if cur_price>cur_base_price:
-                item_trail_percent = int(self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['移停(%)']).text())
+                item_trail_percent = int(self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['移停(%)']).text())
                 new_base_price = cur_price
                 new_stop_price = round(new_base_price*(100-item_trail_percent)/100, 2)
                 cur_base_price_item.setText(str(new_base_price))
-                self.tablewidget.item(cur_base_price_item.row(), self.col_idx_map['觸發價']).setText(str(new_stop_price))
+                self.mk_one_ui.tablewidget.item(cur_base_price_item.row(), self.col_idx_map['觸發價']).setText(str(new_stop_price))
 
     def handle_message(self, message):
         msg = json.loads(message)
@@ -565,12 +543,12 @@ class MainApp(QWidget):
                     if '張' in detail.condition_volume:
                         trail_share = str(int(detail.condition_volume[:-1])*1000)
 
-                    trail_percent_item = self.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['移停(%)'])
+                    trail_percent_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['移停(%)'])
                     trail_percent_item.setText(trail_percent)
                     trail_percent_item.setCheckState(Qt.Checked)
-                    self.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['當前基準價']).setText(base_price)
-                    self.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['觸發價']).setText(trigger_price)
-                    self.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['設定股數']).setText(trail_share)
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['當前基準價']).setText(base_price)
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['觸發價']).setText(trigger_price)
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['設定股數']).setText(trail_share)
                     self.trail_stop[detail.symbol] = int(trail_percent)
                     self.trail_guid_map[detail.symbol] = detail.guid
 
@@ -607,31 +585,31 @@ class MainApp(QWidget):
             stock_symbol = key[0]
             stock_name = self.tickers_name[key[0]]
             print(stock_symbol)
-            row = self.tablewidget.rowCount()
-            self.tablewidget.insertRow(row)
+            row = self.mk_one_ui.tablewidget.rowCount()
+            self.mk_one_ui.tablewidget.insertRow(row)
             self.row_idx_map[stock_symbol] = row
             for j in range(len(self.table_header)):
                 item = QTableWidgetItem()
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 if self.table_header[j] == '股票名稱':
                     item.setText(stock_name)
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '股票代號':
                     item.setText(stock_symbol)
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '類別':
                     item.setText(str(value.order_type).split('.')[-1])
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '庫存股數':
                     item.setText(str(value.today_qty))
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '現價':
                     item.setText('-')
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
 
                 elif self.table_header[j] == '庫存均價':
                     item.setText(str(round(self.unrealized_pnl[key].cost_price+self.epsilon, 2)))
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '損益試算':
                     cur_upnl = 0
                     if self.unrealized_pnl[key].unrealized_profit > self.unrealized_pnl[key].unrealized_loss:
@@ -639,7 +617,7 @@ class MainApp(QWidget):
                     else:
                         cur_upnl = -(self.unrealized_pnl[key].unrealized_loss)
                     item.setText(str(cur_upnl))
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '獲利率%':
                     cur_upnl = 0
                     if self.unrealized_pnl[key].unrealized_profit > self.unrealized_pnl[key].unrealized_loss:
@@ -649,22 +627,22 @@ class MainApp(QWidget):
                     stock_cost = value.today_qty*self.unrealized_pnl[key].cost_price
                     return_rate = cur_upnl/stock_cost*100
                     item.setText(str(round(return_rate+self.epsilon, 2))+'%')
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
 
                 elif self.table_header[j] == '移停(%)':
                     item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Unchecked)
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
 
                 elif self.table_header[j] == '當前基準價':
                     item.setText('-')
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '觸發價':
                     item.setText('-')
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
                 elif self.table_header[j] == '設定股數':
                     item.setText('-')
-                    self.tablewidget.setItem(row, j, item)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
 
             self.wsstock.subscribe({
                 'channel': 'aggregates',
@@ -674,7 +652,7 @@ class MainApp(QWidget):
         self.print_log('庫存資訊初始化完成')
 
         # 調整股票名稱欄位寬度
-        header = self.tablewidget.horizontalHeader()
+        header = self.mk_one_ui.tablewidget.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         print(self.row_idx_map)
         print(self.col_idx_map)
@@ -696,8 +674,8 @@ class MainApp(QWidget):
 
     # 更新最新log到QPlainTextEdit的slot function
     def print_log(self, log_info):
-        self.log_text.appendPlainText(log_info)
-        self.log_text.moveCursor(QTextCursor.End)
+        self.mk_one_ui.log_text.appendPlainText(log_info)
+        self.mk_one_ui.log_text.moveCursor(QTextCursor.End)
     
     # 視窗關閉時要做的事，主要是關websocket連結
     def closeEvent(self, event):
@@ -718,7 +696,7 @@ class MainApp(QWidget):
         else:
             event.ignore()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         sdk = FubonSDK()
     except ValueError:
@@ -729,7 +707,11 @@ if __name__ == "__main__":
     else:
         app = QApplication.instance()
     app.setStyleSheet("QWidget{font-size: 12pt;}")
-    form = LoginForm(MainApp, sdk, 'trail.png')
-    form.show()
-    
-    sys.exit(app.exec())
+    login_form = login_handler(sdk, 'trail.png')
+    login_form.show()
+    login_form_res = app.exec()
+
+    mk_one_trader = MainApp(login_form)
+    mk_one_trader.show()
+    mk_one_trader_res = app.exec()
+    sys.exit(mk_one_trader_res)
