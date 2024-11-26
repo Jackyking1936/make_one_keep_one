@@ -35,6 +35,6 @@ trail = TrailOrder(
     order_type = ConditionOrderType.Stock
 )
 
-sdk.stock.trail_profit(active_account, "20241011", "20250103", StopSign.Full, trail)
+sdk.stock.trail_profit(active_account, "20241127", "20250103", StopSign.Full, trail)
 
 # %%
