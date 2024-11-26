@@ -1,4 +1,4 @@
-from login_gui_v2 import login_handler
+from login_gui_v3 import login_handler
 from mk_one_ui import main_ui
 from auto_save_dict import AutoSaveDict
 
@@ -707,11 +707,8 @@ if __name__ == '__main__':
     else:
         app = QApplication.instance()
     app.setStyleSheet("QWidget{font-size: 12pt;}")
-    login_form = login_handler(sdk, 'trail.png')
+    login_form = login_handler(sdk, MainApp, 'trail.png')
     login_form.show()
     login_form_res = app.exec()
-
-    mk_one_trader = MainApp(login_form)
-    mk_one_trader.show()
-    mk_one_trader_res = app.exec()
-    sys.exit(mk_one_trader_res)
+    
+    sys.exit(login_form_res)

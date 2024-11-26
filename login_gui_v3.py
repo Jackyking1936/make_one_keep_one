@@ -9,11 +9,12 @@ from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QLineE
 from PySide6.QtGui import QIcon
 
 class login_handler(QWidget):
-    def __init__(self, fubon_sdk, icon_path='default.png'):
+    def __init__(self, fubon_sdk, MainApp, icon_path='default.png'):
         super().__init__()
 
         self.sdk = fubon_sdk
         self.active_account = None
+        self.main_app = MainApp
         self.icon_path = icon_path
 
         my_icon = QIcon()
@@ -124,7 +125,7 @@ class login_handler(QWidget):
                     self.active_account = cur_account
                     with open('info.pkl', 'wb') as f:
                         pickle.dump(self.user_info_dict, f)
-                    self.close()
+                    self.accept_login()
                     
             if self.active_account == None:
                 self.sdk.logout()
@@ -135,6 +136,12 @@ class login_handler(QWidget):
             msg.setWindowTitle("登入失敗")
             msg.setText(accounts.message)
             msg.exec()
+
+    def accept_login(self):
+        # 在登入成功後，打開主視窗
+        self.main_window = self.main_app(self)
+        self.main_window.show()
+        self.close()
     
     def re_login(self):
         if self.user_info_dict:
@@ -152,10 +159,10 @@ class login_handler(QWidget):
         return self.sdk, self.active_account
 
 class MainApp(QWidget):
-    def __init__(self, sdk, active_account):
+    def __init__(self, login_handler):
         super().__init__()
 
-        self.active_account = active_account
+        self.active_account = login_handler.active_account
         self.setWindowTitle("Python教學範例")
         self.resize(600, 400)
         # Log區Layout設定
@@ -181,15 +188,7 @@ if __name__ == "__main__":
     else:
         app = QApplication.instance()
     app.setStyleSheet("QWidget{font-size: 12pt;}")
-    form = login_handler(sdk)
+    form = login_handler(sdk, MainApp)
     form.show()
 
     app.exec()
-
-    print(form.sdk, form.active_account)
-
-    main_app = MainApp(form.sdk, form.active_account)
-    main_app.show()
-    app.exec()
-
-    print(form.re_login())

@@ -1,4 +1,4 @@
-from login_gui_v2 import LoginForm
+from login_gui_v3 import LoginForm
 from auto_save_dict import AutoSaveDict
 
 import sys

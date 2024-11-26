@@ -15,7 +15,7 @@ class main_ui(QWidget):
         label_program_name.setStyleSheet("color: red; font-size: 24px; font-weight: bold;")
 
         # 庫存表表頭
-        self.table_header = ['股票名稱', '股票代號', '類別', '庫存股數', '庫存均價', '現價', '損益試算', '獲利率%', '移停(%)', '當前基準價', '觸發價', '設定股數']
+        self.table_header = ['股票名稱', '股票代號', '類別', '庫存股數', '庫存均價', '現價', '損益試算', '獲利率%', '短移停(%)', '短基準價', '短觸發價', '短股數', '長移停(%)', '長基準價', '長觸發價', '長股數']
 
         self.tablewidget = QTableWidget(0, len(self.table_header))
         self.tablewidget.setHorizontalHeaderLabels([f'{item}' for item in self.table_header])
