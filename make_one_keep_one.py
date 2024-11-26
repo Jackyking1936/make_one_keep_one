@@ -1,6 +1,5 @@
 from login_gui_v3 import login_handler
 from mk_one_ui import main_ui
-from auto_save_dict import AutoSaveDict
 
 import sys
 import re
@@ -17,8 +16,8 @@ from fubon_neo.constant import (
 )
 from fubon_neo.constant import TimeInForce, OrderType, PriceType, MarketType, BSAction
 
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QLineEdit, QGridLayout, QVBoxLayout, QHeaderView, QMessageBox, QTableWidget, QTableWidgetItem, QPlainTextEdit, QFileDialog, QSizePolicy
-from PySide6.QtGui import QTextCursor, QIcon, QColor
+from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem
+from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt, Signal, QObject
 from threading import Timer
 
@@ -103,8 +102,10 @@ class MainApp(QWidget):
         self.tickers_name_init()
         self.subscribed_ids = {}
         
-        self.trail_stop = AutoSaveDict('trail_stop.json')
-        self.trail_guid_map = AutoSaveDict('trail_guid_map.json')
+        # self.trail_stop = AutoSaveDict('trail_stop.json')
+        # self.trail_guid_map = AutoSaveDict('trail_guid_map.json')
+        self.trail_stop = {}
+        self.trail_guid_map = {}
 
         # 模擬用變數
         self.fake_price_cnt = 0
@@ -177,17 +178,31 @@ class MainApp(QWidget):
                 return_rate = 0
                 item.setText(str(round(return_rate+self.epsilon, 2))+'%')
                 self.mk_one_ui.tablewidget.setItem(row, j, item)
-            elif self.table_header[j] == '移停(%)':
+            elif self.table_header[j] == '短移停(%)':
+                    item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+                    item.setCheckState(Qt.Unchecked)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
+            elif self.table_header[j] == '短基準價':
+                item.setText('-')
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
+            elif self.table_header[j] == '短觸發價':
+                item.setText('-')
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
+            elif self.table_header[j] == '短股數':
+                item.setText('-')
+                self.mk_one_ui.tablewidget.setItem(row, j, item)
+            elif self.table_header[j] == '長移停(%)':
                 item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                 item.setCheckState(Qt.Unchecked)
                 self.mk_one_ui.tablewidget.setItem(row, j, item)
-            elif self.table_header[j] == '當前基準價':
+
+            elif self.table_header[j] == '長基準價':
                 item.setText('-')
                 self.mk_one_ui.tablewidget.setItem(row, j, item)
-            elif self.table_header[j] == '觸發價':
+            elif self.table_header[j] == '長觸發價':
                 item.setText('-')
                 self.mk_one_ui.tablewidget.setItem(row, j, item)
-            elif self.table_header[j] == '設定股數':
+            elif self.table_header[j] == '長股數':
                 item.setText('-')
                 self.mk_one_ui.tablewidget.setItem(row, j, item)
 
@@ -379,7 +394,7 @@ class MainApp(QWidget):
 
             order_qty = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['庫存股數']).text()
 
-            if item.column() == self.col_idx_map['移停(%)']:
+            if item.column() == self.col_idx_map['短移停(%)']:
                 if symbol in self.trail_stop:
                     return
                 
@@ -389,7 +404,7 @@ class MainApp(QWidget):
                     self.print_log(str(e))
                     self.print_log("請輸入正確移動停損利(%), 需為大於0之正整數")
                     item.setCheckState(Qt.Unchecked)
-                    print("Trail Stop lit:", self.trail_stop)
+                    print("Trail Stop list:", self.trail_stop)
                     return
                 
                 if 0 >= item_trail_percent:
@@ -403,19 +418,19 @@ class MainApp(QWidget):
                         self.trail_guid_map[symbol] = trail_res.data.guid
                         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                         self.print_log(f"{symbol}...移動停損利設定成功: {item_str}%, 單號: {trail_res.data.guid}")
-                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['當前基準價']).setText(str(cur_price))
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短基準價']).setText(str(cur_price))
                         stop_price = round(cur_price*(100-item_trail_percent)/100, 2)
-                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['觸發價']).setText(str(stop_price))
-                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['設定股數']).setText(str(order_qty))
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短觸發價']).setText(str(stop_price))
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短股數']).setText(str(order_qty))
 
                     else:
-                        self.print_log(symbol+"...移動停損利設定失敗: "+trail_res.message)
+                        self.print_log(symbol+"...短移動停損利設定失敗: "+trail_res.message)
                         item.setCheckState(Qt.Unchecked)
                     
                 print("Trail Stop list:", self.trail_stop)
 
         elif item.checkState() == Qt.Unchecked:
-            if item.column() == self.col_idx_map['移停(%)']:
+            if item.column() == self.col_idx_map['短移停(%)']:
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
                 symbol = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
                 if symbol in self.trail_stop:
@@ -423,10 +438,10 @@ class MainApp(QWidget):
                     if cancel_res.is_success:
                         self.trail_stop.pop(symbol)
                         self.trail_guid_map.pop(symbol)
-                        self.print_log(symbol+"...移停已移除，請重新設置")
-                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['當前基準價']).setText('-')
-                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['觸發價']).setText('-')
-                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['設定股數']).setText('-')
+                        self.print_log(symbol+"...短移停已移除，請重新設置")
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短基準價']).setText('-')
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短觸發價']).setText('-')
+                        self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短股數']).setText('-')
                         print("Trail Stop list:", self.trail_stop)
 
     def message_update(self, data_dict):
@@ -454,18 +469,18 @@ class MainApp(QWidget):
         return_rate = cur_pnl/(float(avg_price)*float(share))*100
         self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(return_rate+self.epsilon, 2))+'%')
         
-        cur_base_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['當前基準價'])
+        cur_base_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['短基準價'])
         if cur_base_price_item.text() == '-':
             return
         else:
             cur_base_price = float(cur_base_price_item.text())
             
             if cur_price>cur_base_price:
-                item_trail_percent = int(self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['移停(%)']).text())
+                item_trail_percent = int(self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['短移停(%)']).text())
                 new_base_price = cur_price
                 new_stop_price = round(new_base_price*(100-item_trail_percent)/100, 2)
                 cur_base_price_item.setText(str(new_base_price))
-                self.mk_one_ui.tablewidget.item(cur_base_price_item.row(), self.col_idx_map['觸發價']).setText(str(new_stop_price))
+                self.mk_one_ui.tablewidget.item(cur_base_price_item.row(), self.col_idx_map['短觸發價']).setText(str(new_stop_price))
 
     def handle_message(self, message):
         msg = json.loads(message)
@@ -523,10 +538,10 @@ class MainApp(QWidget):
         self.wsstock.on('message', self.handle_message)
         self.wsstock.connect()
 
-        for key, value in self.subscribed_ids.items():
+        for symbol in list(self.row_idx_map.keys()):
             self.wsstock.subscribe({
                 'channel': 'aggregates',
-                "symbol": key
+                "symbol": symbol
             })
             
     
@@ -574,12 +589,12 @@ class MainApp(QWidget):
                     if '張' in detail.condition_volume:
                         trail_share = str(int(detail.condition_volume[:-1])*1000)
 
-                    trail_percent_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['移停(%)'])
+                    trail_percent_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短移停(%)'])
                     trail_percent_item.setText(trail_percent)
                     trail_percent_item.setCheckState(Qt.Checked)
-                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['當前基準價']).setText(base_price)
-                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['觸發價']).setText(trigger_price)
-                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['設定股數']).setText(trail_share)
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短基準價']).setText(base_price)
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短觸發價']).setText(trigger_price)
+                    self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短股數']).setText(trail_share)
                     self.trail_stop[detail.symbol] = int(trail_percent)
                     self.trail_guid_map[detail.symbol] = detail.guid
 
@@ -660,18 +675,32 @@ class MainApp(QWidget):
                     item.setText(str(round(return_rate+self.epsilon, 2))+'%')
                     self.mk_one_ui.tablewidget.setItem(row, j, item)
 
-                elif self.table_header[j] == '移停(%)':
+                elif self.table_header[j] == '短移停(%)':
                     item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Unchecked)
                     self.mk_one_ui.tablewidget.setItem(row, j, item)
 
-                elif self.table_header[j] == '當前基準價':
+                elif self.table_header[j] == '短基準價':
                     item.setText('-')
                     self.mk_one_ui.tablewidget.setItem(row, j, item)
-                elif self.table_header[j] == '觸發價':
+                elif self.table_header[j] == '短觸發價':
                     item.setText('-')
                     self.mk_one_ui.tablewidget.setItem(row, j, item)
-                elif self.table_header[j] == '設定股數':
+                elif self.table_header[j] == '短股數':
+                    item.setText('-')
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
+                elif self.table_header[j] == '長移停(%)':
+                    item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+                    item.setCheckState(Qt.Unchecked)
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
+
+                elif self.table_header[j] == '長基準價':
+                    item.setText('-')
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
+                elif self.table_header[j] == '長觸發價':
+                    item.setText('-')
+                    self.mk_one_ui.tablewidget.setItem(row, j, item)
+                elif self.table_header[j] == '長股數':
                     item.setText('-')
                     self.mk_one_ui.tablewidget.setItem(row, j, item)
 
@@ -712,6 +741,7 @@ class MainApp(QWidget):
     def closeEvent(self, event):
         # do stuff
         self.print_log("disconnect websocket...")
+        self.mannul_disconnect = True
         self.wsstock.disconnect()
         self.sdk.logout()
 
@@ -726,6 +756,7 @@ class MainApp(QWidget):
             event.accept() # let the window close
         else:
             event.ignore()
+
 
 if __name__ == '__main__':
     try:
