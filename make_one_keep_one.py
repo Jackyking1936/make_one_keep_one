@@ -19,7 +19,7 @@ from fubon_neo.constant import TimeInForce, OrderType, PriceType, MarketType, BS
 
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QLineEdit, QGridLayout, QVBoxLayout, QHeaderView, QMessageBox, QTableWidget, QTableWidgetItem, QPlainTextEdit, QFileDialog, QSizePolicy
 from PySide6.QtGui import QTextCursor, QIcon, QColor
-from PySide6.QtCore import Qt, Signal, QObject, QMutex
+from PySide6.QtCore import Qt, Signal, QObject
 from threading import Timer
 
 class RepeatTimer(Timer):
@@ -55,6 +55,7 @@ class MainApp(QWidget):
     def __init__(self, login_handler):
         super().__init__()
 
+        self.ws_mode = Mode.Normal
         self.login_handler = login_handler
         self.sdk = self.login_handler.sdk
         self.active_account = self.login_handler.active_account
@@ -68,11 +69,10 @@ class MainApp(QWidget):
         # 將 main_ui 的佈局設定到 MainWindow
         self.setLayout(self.mk_one_ui.layout())
         self.table_header = self.mk_one_ui.table_header
-        self.mutex = QMutex()
 
         self.print_log("login success, 現在使用帳號: {}".format(self.active_account.account))
         self.print_log("建立行情連線...")
-        self.sdk.init_realtime(Mode.Normal) # 建立行情連線
+        self.sdk.init_realtime(self.ws_mode) # 建立行情連線
         self.print_log("行情連線建立OK")
         self.reststock = self.sdk.marketdata.rest_client.stock
         self.wsstock = self.sdk.marketdata.websocket_client.stock
@@ -97,6 +97,7 @@ class MainApp(QWidget):
         self.row_idx_map = {}
         self.col_idx_map = dict(zip(self.table_header, range(len(self.table_header))))
         self.epsilon = 0.0000001
+        self.mannul_disconnect = False
 
         self.tickers_name = {}
         self.tickers_name_init()
@@ -110,7 +111,7 @@ class MainApp(QWidget):
 
         # 建立Websocket連線並初始化資料表
         self.print_log("建立WebSocket行情連線")
-        self.sdk.init_realtime(Mode.Normal)
+        self.sdk.init_realtime(self.ws_mode)
         self.wsstock = self.sdk.marketdata.websocket_client.stock
         self.wsstock.on("connect", self.handle_connect)
         self.wsstock.on("disconnect", self.handle_disconnect)
@@ -120,7 +121,16 @@ class MainApp(QWidget):
 
         self.print_log("抓取庫存...")
         self.communicator.table_init_signal.emit()
-
+        self.sdk.set_on_event(self.on_event) 
+        
+    
+    def on_event(self, code, content):
+        print(f"event code:{code}, content:{content}")
+        if code == "300":
+            self.mannul_disconnect = True
+            self.wsstock.disconnect()
+            self.sdk, self.active_account = self.login_handler.re_login()
+            self.ws_reconnect()
     
     # 當有庫存歸零時刪除該列的slot function
     def del_table_row(self, row_idx):
@@ -493,14 +503,35 @@ class MainApp(QWidget):
             
     def handle_connect(self):
         self.communicator.print_log_signal.emit('market data connected')
+        self.mannul_disconnect = False
     
     def handle_disconnect(self, code, message):
         self.communicator.print_log_signal.emit(f'market data disconnect: {code}, {message}')
-        self.mutex.unlock()
+        if self.mannul_disconnect == True:
+            self.communicator.print_log_signal.emit(f"manuully disconnect, disconnected")
+        else:
+            self.communicator.print_log_signal.emit(f"unexpected disconnect, reconnecting...")
+            self.ws_reconnect()
+            
+
+    def ws_reconnect(self):
+        self.sdk.init_realtime(self.ws_mode)
+        self.wsstock = self.sdk.marketdata.websocket_client.stock
+        self.wsstock.on("connect", self.handle_connect)
+        self.wsstock.on("disconnect", self.handle_disconnect)
+        self.wsstock.on("error", self.handle_error)
+        self.wsstock.on('message', self.handle_message)
+        self.wsstock.connect()
+
+        for key, value in self.subscribed_ids.items():
+            self.wsstock.subscribe({
+                'channel': 'aggregates',
+                "symbol": key
+            })
+            
     
     def handle_error(self, error):
         self.communicator.print_log_signal.emit(f'market data error: {error}')
-        self.mutex.unlock()
     
     def trail_stop_fetch(self):
         today_date = datetime.today()
@@ -710,5 +741,5 @@ if __name__ == '__main__':
     login_form = login_handler(sdk, MainApp, 'trail.png')
     login_form.show()
     login_form_res = app.exec()
-    
+
     sys.exit(login_form_res)
