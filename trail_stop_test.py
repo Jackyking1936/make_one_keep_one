@@ -38,3 +38,8 @@ trail = TrailOrder(
 sdk.stock.trail_profit(active_account, "20241127", "20250103", StopSign.Full, trail)
 
 # %%
+get_res = sdk.stock.get_trail_history(active_account,"20241126","20241127")
+
+#%%
+cancel_res = sdk.stock.cancel_condition_orders(active_account, "e2f043f9-9c4b-4053-8709-22fbf23361de")
+# %%

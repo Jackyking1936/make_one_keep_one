@@ -368,7 +368,7 @@ class MainApp(QWidget):
     def fake_message(self):
         self.price_interval+=1
         # stock_list = ['2330', '2881', '2454', '00940', '1101', '6598', '2509', '3230', '4903', '6661']
-        stock_list = ['00679B']
+        stock_list = ['00900']
         json_template = '''{{"event":"data", "data":{{"date": "2024-10-04", "type": "EQUITY", "exchange": "TPEx", "market": "OTC", "symbol": "{symbol}", "name": "建達", "referencePrice": 23.45, "previousClose": 23.45, "openPrice": 24.5, "openTime": 1728003611612464, "highPrice": 25.75, "highTime": 1728004595544768, "lowPrice": 23.75, "lowTime": 1728003784656798, "closePrice": 25.75, "closeTime": 1728019800000000, "avgPrice": 25.29, "change": 2.3, "changePercent": 9.81, "amplitude": 8.53, "lastPrice": 25.5, "lastSize": 10, "bids": [{{"price": 25.75, "size": 13285}}, {{"price": 25.7, "size": 22}}, {{"price": 25.6, "size": 4}}, {{"price": 25.55, "size": 1}}, {{"price": 25.5, "size": 1}}], "asks": [], "total": {{"tradeValue": 154027350, "tradeVolume": 6091, "tradeVolumeAtBid": 958, "tradeVolumeAtAsk": 4754, "transaction": 1235, "time": 1728019800000000}}, "lastTrade": {{"bid": 25.75, "price": {price}, "size": 10, "time": 1728019800000000, "serial": 2632362}}, "lastTrial": {{"bid": 25.75, "price": 25.75, "size": 10, "time": 1728019787685448, "serial": 2631092}}, "isLimitUpPrice": True, "isLimitUpBid": True, "isClose": True, "serial": 2632362, "lastUpdated": 1728019800000000}} ,"id":"w4mkzAqYAYFKyEBLyEjmHEoNADpwKjUJmqg02G3OC9YmV","channel":"aggregates"}}'''
         json_price = 15+self.price_interval
         json_str = json_template.format(symbol=stock_list[self.price_interval % len(stock_list)], price=str(json_price))
@@ -439,6 +439,13 @@ class MainApp(QWidget):
                     return
                 
                 near_qty_item = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短股數'])
+                far_qty_item = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['長股數'])
+                far_qty = 0
+                try:
+                    far_qty = int(far_qty_item.text())
+                except Exception as e:
+                    print(f"error: {e}")
+
                 try:
                     near_qty = int(near_qty_item.text())
                     if near_qty>int(inv_qty):
@@ -447,8 +454,11 @@ class MainApp(QWidget):
                         raise ValueError("設定股數需為1000的倍數")
                     elif near_qty <= 0:
                         raise ValueError("設定股數需大於0")
+                    elif near_qty+far_qty>int(inv_qty):
+                        raise ValueError("總移動停損利股數超過庫存")
+
                 except Exception as e:
-                    self.print_log(str(e))
+                    self.print_log(f"Error:{e}")
                     self.print_log("請輸入正確移動停損股數，需為正整數(>0)且小於庫存股數")
                     item.setCheckState(Qt.Unchecked)
                     print("Trail Stop list:", self.near_trail_stop)
@@ -471,6 +481,8 @@ class MainApp(QWidget):
                     item.setCheckState(Qt.Unchecked)
                     
                 print("Near Trail Stop list:", self.near_trail_stop)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                near_qty_item.setFlags(near_qty_item.flags() & ~Qt.ItemIsEditable)
 
             elif item.column() == self.col_idx_map['長移停(%)']:
                 if symbol in self.far_trail_stop:
@@ -488,6 +500,13 @@ class MainApp(QWidget):
                     return
                 
                 far_qty_item = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['長股數'])
+                near_qty_item = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短股數'])
+                near_qty = 0
+                try:
+                    near_qty = int(near_qty_item.text())
+                except Exception as e:
+                    print(f"error: {e}")
+
                 try:
                     far_qty = int(far_qty_item.text())
                     if far_qty>int(inv_qty):
@@ -496,8 +515,10 @@ class MainApp(QWidget):
                         raise ValueError("設定股數需為1000的倍數")
                     elif far_qty <= 0:
                         raise ValueError("設定股數需大於0")
+                    elif near_qty+far_qty>int(inv_qty):
+                        raise ValueError("總移動停損利股數超過庫存")
                 except Exception as e:
-                    self.print_log(str(e))
+                    self.print_log(f"Error:{e}")
                     self.print_log("請輸入正確移動停損股數，需為正整數(>0)且小於庫存股數")
                     item.setCheckState(Qt.Unchecked)
                     print("Trail Stop list:", self.far_trail_stop)
@@ -520,10 +541,14 @@ class MainApp(QWidget):
                     item.setCheckState(Qt.Unchecked)
                     
                 print("Far Trail Stop list:", self.far_trail_stop)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                far_qty_item.setFlags(far_qty_item.flags() & ~Qt.ItemIsEditable)
 
         elif item.checkState() == Qt.Unchecked:
             if item.column() == self.col_idx_map['短移停(%)']:
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
+                near_qty_item = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['短股數'])
+                near_qty_item.setFlags(near_qty_item.flags() | Qt.ItemIsEditable)
                 symbol = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
                 if symbol in self.near_trail_stop:
                     cancel_res = self.sdk.stock.cancel_condition_orders(self.active_account, self.near_guid_map[symbol])
@@ -537,6 +562,8 @@ class MainApp(QWidget):
 
             elif item.column() == self.col_idx_map['長移停(%)']:
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
+                far_qty_item = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['長股數'])
+                far_qty_item.setFlags(far_qty_item.flags() | Qt.ItemIsEditable)
                 symbol = self.mk_one_ui.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
                 if symbol in self.far_trail_stop:
                     cancel_res = self.sdk.stock.cancel_condition_orders(self.active_account, self.far_guid_map[symbol])
@@ -573,18 +600,31 @@ class MainApp(QWidget):
         return_rate = cur_pnl/(float(avg_price)*float(share))*100
         self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['獲利率%']).setText(str(round(return_rate+self.epsilon, 2))+'%')
         
-        cur_base_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['短基準價'])
-        if cur_base_price_item.text() == '-':
+        near_base_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['短基準價'])
+        far_base_price_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['長基準價'])
+        if near_base_price_item.text() == '-':
             return
         else:
-            cur_base_price = float(cur_base_price_item.text())
+            near_base_price = float(near_base_price_item.text())
             
-            if cur_price>cur_base_price:
+            if cur_price>near_base_price:
                 item_trail_percent = int(self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['短移停(%)']).text())
                 new_base_price = cur_price
                 new_stop_price = round(new_base_price*(100-item_trail_percent)/100, 2)
-                cur_base_price_item.setText(str(new_base_price))
-                self.mk_one_ui.tablewidget.item(cur_base_price_item.row(), self.col_idx_map['短觸發價']).setText(str(new_stop_price))
+                near_base_price_item.setText(str(new_base_price))
+                self.mk_one_ui.tablewidget.item(near_base_price_item.row(), self.col_idx_map['短觸發價']).setText(str(new_stop_price))
+        
+        if far_base_price_item.text() == '-':
+            return
+        else:
+            far_base_price = float(far_base_price_item.text())
+            
+            if cur_price>far_base_price:
+                item_trail_percent = int(self.mk_one_ui.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['長移停(%)']).text())
+                new_base_price = cur_price
+                new_stop_price = round(new_base_price*(100-item_trail_percent)/100, 2)
+                far_base_price_item.setText(str(new_base_price))
+                self.mk_one_ui.tablewidget.item(far_base_price_item.row(), self.col_idx_map['長觸發價']).setText(str(new_stop_price))
 
     def handle_message(self, message):
         msg = json.loads(message)
@@ -657,6 +697,7 @@ class MainApp(QWidget):
         end_date = datetime.strftime(today_date, "%Y%m%d")
         start_date = datetime.strftime(today_date-timedelta(days=90), "%Y%m%d")
         trail_hist_res = sdk.stock.get_trail_history(self.active_account, start_date, end_date)
+        time.sleep(0.2)
         if not trail_hist_res.is_success:
             print(f"Trail Hist fetch fail, start_date:{start_date}, end_date:{end_date}, message:{trail_hist_res.message}")
         else:
@@ -702,16 +743,22 @@ class MainApp(QWidget):
                             trail_percent_item.setCheckState(Qt.Checked)
                             self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長基準價']).setText(base_price)
                             self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長觸發價']).setText(trigger_price)
-                            self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長股數']).setText(trail_share)
+                            far_qty_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長股數'])
+                            far_qty_item.setText(trail_share)
+                            trail_percent_item.setFlags(trail_percent_item.flags() & ~Qt.ItemIsEditable)
+                            far_qty_item.setFlags(far_qty_item.flags() & ~Qt.ItemIsEditable)
                         else:
                             self.far_trail_stop[detail.symbol] = self.near_trail_stop[detail.symbol]
                             self.far_guid_map[detail.symbol] = self.near_guid_map[detail.symbol]
                             trail_percent_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長移停(%)'])
-                            trail_percent_item.setText(trail_percent)
+                            trail_percent_item.setText(str(self.far_trail_stop[detail.symbol]))
                             trail_percent_item.setCheckState(Qt.Checked)
-                            self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長基準價']).setText(base_price)
-                            self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長觸發價']).setText(trigger_price)
-                            self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長股數']).setText(trail_share)
+                            self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長基準價']).setText(self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短基準價']).text())
+                            self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長觸發價']).setText(self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短觸發價']).text())
+                            far_qty_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['長股數'])
+                            far_qty_item.setText(self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短股數']).text())
+                            trail_percent_item.setFlags(trail_percent_item.flags() & ~Qt.ItemIsEditable)
+                            far_qty_item.setFlags(far_qty_item.flags() & ~Qt.ItemIsEditable)
 
                             self.near_trail_stop[detail.symbol] = int(trail_percent)
                             self.near_guid_map[detail.symbol] = detail.guid
@@ -729,7 +776,10 @@ class MainApp(QWidget):
                         trail_percent_item.setCheckState(Qt.Checked)
                         self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短基準價']).setText(base_price)
                         self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短觸發價']).setText(trigger_price)
-                        self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短股數']).setText(trail_share)
+                        near_qty_item = self.mk_one_ui.tablewidget.item(self.row_idx_map[detail.symbol], self.col_idx_map['短股數'])
+                        near_qty_item.setText(trail_share)
+                        trail_percent_item.setFlags(trail_percent_item.flags() & ~Qt.ItemIsEditable)
+                        near_qty_item.setFlags(near_qty_item.flags() & ~Qt.ItemIsEditable)
 
     # 視窗啟動時撈取對應帳號的inventories和unrealized_pnl初始化表格
     def table_init(self):

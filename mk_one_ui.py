@@ -5,7 +5,7 @@ class main_ui(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Python條件單庫存移動停損利(教學範例，僅限現股)")
+        self.setWindowTitle("Python分批移動停損利小幫手(教學範例，僅限現股)")
         self.resize(1200, 600)
         
         # 製作上下排列layout上為庫存表，下為log資訊
