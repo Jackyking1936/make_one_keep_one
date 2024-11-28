@@ -27,6 +27,8 @@ trail = TrailOrder(
     price = "19.91",
     direction = Direction.Down,
     percentage = 10,  # 漲跌 % 數
+
+
     buy_sell = BSAction.Sell,
     quantity = 15000,
     price_type = ConditionPriceType.Market,
@@ -35,11 +37,11 @@ trail = TrailOrder(
     order_type = ConditionOrderType.Stock
 )
 
-sdk.stock.trail_profit(active_account, "20241127", "20250103", StopSign.Full, trail)
+sdk.stock.trail_profit(active_account, "20241128", "20250224", StopSign.Full, trail)
 
 # %%
 get_res = sdk.stock.get_trail_history(active_account,"20241126","20241127")
 
 #%%
-cancel_res = sdk.stock.cancel_condition_orders(active_account, "e2f043f9-9c4b-4053-8709-22fbf23361de")
+cancel_res = sdk.stock.cancel_condition_orders(active_account, "80c0a7dc-06da-46bf-a025-538405b55db4")
 # %%
